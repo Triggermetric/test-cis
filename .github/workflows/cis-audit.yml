@@ -1,0 +1,319 @@
+name: CIS Cassandra CI
+
+# OIDC Setup (one-time, manual):
+# 1. az ad app create --display-name "cis-cassandra-github-actions"
+# 2. az ad app federated-credential create ... (GitHub OIDC subject)
+# 3. Set GitHub Secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+# 4. Optional: SSH_PRIVATE_KEY for script sync to VMs
+
+permissions:
+  id-token: write # OIDC token generation
+  contents: read
+  security-events: write # for SARIF upload (đã dùng)
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, feat/cis-implementation]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Job 1 — Lint & syntax-check all bash scripts
+  # ─────────────────────────────────────────────────────────────
+  lint-bash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Syntax check all bash scripts
+        run: |
+          for f in scripts/cis-tool.sh scripts/lib/*.sh scripts/cluster/*.sh scripts/tests/*.sh; do
+            bash -n "$f" && echo "✅ syntax OK: $f"
+          done
+
+      - name: Shellcheck (warnings only, non-blocking)
+        run: |
+          shellcheck --severity=error scripts/cis-tool.sh scripts/lib/*.sh \
+            scripts/cluster/*.sh || true
+
+      - name: Run bash unit tests
+        run: |
+          export CASSANDRA_YAML=/dev/null
+          export LOGBACK_XML=/dev/null
+          bash scripts/tests/test_audit.sh 2>&1
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 2 — Run Python/FastAPI tests
+  # ─────────────────────────────────────────────────────────────
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install --no-cache-dir -r requirements.txt
+
+      - name: Run pytest
+        run: |
+          cd backend
+          PYTHONPATH=. python -m pytest tests/ -v --tb=short 2>&1
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-results
+          path: backend/.pytest_cache/
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 3 — Build + test the React frontend
+  # ─────────────────────────────────────────────────────────────
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: ESLint security scan
+        run: |
+          cd frontend
+          npm run lint
+
+      - name: TypeScript check
+        run: |
+          cd frontend
+          npx tsc --noEmit
+
+      - name: Run Vitest
+        run: |
+          cd frontend
+          npm test
+
+      - name: Build
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 4 — SAST: Bandit (Python) + secret scan
+  # ─────────────────────────────────────────────────────────────
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: [lint-bash, test-backend, test-frontend]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install bandit
+        run: pip install bandit[toml]
+
+      - name: Bandit SAST — backend
+        run: |
+          bandit -r backend/ \
+            --exclude backend/tests/ \
+            --severity-level medium \
+            --confidence-level medium \
+            -f txt || true
+
+      - name: Scan for hardcoded secrets
+        run: |
+          echo "=== Checking scripts for hardcoded passwords ==="
+          grep -rn "password\s*=\s*['\"][^$]" scripts/ || echo "✅ No obvious hardcoded passwords in scripts"
+          echo "=== Checking backend for hardcoded passwords ==="
+          grep -rn "password\s*=\s*['\"]" backend/ --include="*.py" || echo "✅ No obvious hardcoded passwords in backend"
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 5 — Trivy: CVE scan filesystem + Python deps
+  # ─────────────────────────────────────────────────────────────
+  trivy-scan:
+    runs-on: ubuntu-latest
+    needs: [lint-bash, test-backend, test-frontend]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          severity: "CRITICAL,HIGH"
+          format: "table"
+          exit-code: "0"
+          ignore-unfixed: true
+
+      - name: Run Trivy SARIF (upload to GitHub Security tab)
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          severity: "CRITICAL,HIGH"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 6 — Security Gate: block merge on CRITICAL CIS violations
+  # This is the DevSecOps core: CI fails if any CRITICAL check is FAIL
+  # ─────────────────────────────────────────────────────────────
+  security-gate:
+    runs-on: ubuntu-latest
+    needs: [security-scan, trivy-scan]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Check audit fixture for CRITICAL violations
+        run: |
+          FIXTURE="scripts/tests/audit-fixture.json"
+          if [ ! -f "$FIXTURE" ]; then
+            echo "⚠ No audit fixture found — skipping gate check"
+            exit 0
+          fi
+
+          echo "=== CIS Security Gate ==="
+          echo "Audit fixture: $FIXTURE"
+          echo ""
+
+          # Count CRITICAL failures
+          CRITICAL=$(jq '[.checks[] | select(.status=="FAIL" and .severity=="CRITICAL")] | length' "$FIXTURE")
+          HIGH=$(jq '[.checks[] | select(.status=="FAIL" and .severity=="HIGH")] | length' "$FIXTURE")
+          TOTAL_FAIL=$(jq '[.checks[] | select(.status=="FAIL")] | length' "$FIXTURE")
+          COMPLIANCE=$(jq '.score.compliance_pct' "$FIXTURE")
+
+          echo "📊 Compliance Score : ${COMPLIANCE}%"
+          echo "❌ Total FAIL       : ${TOTAL_FAIL}"
+          echo "🔴 CRITICAL FAIL    : ${CRITICAL}"
+          echo "🟠 HIGH FAIL        : ${HIGH}"
+          echo ""
+
+          # Print CRITICAL failures
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "=== CRITICAL Violations (blocking merge) ==="
+            jq -r '.checks[] | select(.status=="FAIL" and .severity=="CRITICAL") |
+              "  [\(.check_id)] \(.title)\n    Current : \(.current_value)\n    Expected: \(.expected_value)\n    Fix     : \(.remediation)\n"' "$FIXTURE"
+          fi
+
+          # Gate: fail if any CRITICAL
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "🚫 SECURITY GATE BLOCKED: $CRITICAL critical CIS violation(s) detected."
+            echo "   Run 'sudo bash scripts/cis-tool.sh --harden' on affected nodes to remediate."
+            exit 1
+          fi
+
+          echo "✅ Security gate passed — no CRITICAL violations."
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 7 — Deploy check: Azure OIDC auth + optional script sync
+  # Runs only on main branch, after security-gate passes
+  # ─────────────────────────────────────────────────────────────
+  deploy-check:
+    runs-on: ubuntu-latest
+    needs: security-gate
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify Azure connection
+        run: az account show --output table
+
+      - name: Open NSG for GitHub Runner
+        run: |
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          echo "Runner IP: $RUNNER_IP"
+          az network nsg rule create \
+            --resource-group rg-cis-cassandra \
+            --nsg-name cis-cassandra-nsg \
+            --name AllowGitHubRunnerSSH \
+            --priority 105 \
+            --direction Inbound \
+            --access Allow \
+            --protocol Tcp \
+            --source-address-prefixes "$RUNNER_IP" \
+            --source-port-ranges '*' \
+            --destination-address-prefixes '*' \
+            --destination-port-ranges 22 \
+            --description "Temporary access for GitHub Actions Runner"
+
+      - name: Sync CIS scripts to cluster nodes
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        if: env.SSH_KEY != ''
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          
+          # Fetch public IPs dynamically from Azure
+          PUBLIC_IPS=$(az network public-ip list --resource-group rg-cis-cassandra --query "[].ipAddress" -o tsv)
+          
+          if [ -z "$PUBLIC_IPS" ]; then
+            echo "❌ No public IPs found for resource group rg-cis-cassandra"
+            exit 1
+          fi
+          
+          for IP in $PUBLIC_IPS; do
+            echo "🚀 Syncing scripts to node at $IP..."
+            ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+              cassandra@$IP "mkdir -p ~/cis-tool" || true
+            scp -i /tmp/deploy_key -o StrictHostKeyChecking=no -r \
+              scripts/ cassandra@$IP:~/cis-tool/ || true
+          done
+          rm -f /tmp/deploy_key
+
+      - name: Cleanup NSG Rule
+        if: always()
+        run: |
+          az network nsg rule delete \
+            --resource-group rg-cis-cassandra \
+            --nsg-name cis-cassandra-nsg \
+            --name AllowGitHubRunnerSSH

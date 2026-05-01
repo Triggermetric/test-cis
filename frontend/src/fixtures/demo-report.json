@@ -1,0 +1,329 @@
+{
+  "timestamp": "2026-04-29T10:30:00Z",
+  "cluster_score": {
+    "total": 52,
+    "automated": 48,
+    "manual": 4,
+    "passed": 38,
+    "failed": 10,
+    "needs_review": 4,
+    "compliance_pct": 73.1
+  },
+  "nodes": [
+    {
+      "node": "10.0.1.11",
+      "timestamp": "2026-04-29T10:30:00Z",
+      "score": {
+        "total": 52,
+        "automated": 48,
+        "manual": 4,
+        "passed": 38,
+        "failed": 10,
+        "needs_review": 4,
+        "compliance_pct": 73.1
+      },
+      "checks": [
+        {
+          "id": "1.1",
+          "title": "Ensure that a separate user and group are created for Cassandra",
+          "status": "PASS",
+          "type": "automated",
+          "section": "1",
+          "evidence": "cassandra user exists with GID 1001",
+          "remediable": false
+        },
+        {
+          "id": "1.2",
+          "title": "Ensure Cassandra is installed from official package repository",
+          "status": "PASS",
+          "type": "automated",
+          "section": "1",
+          "evidence": "Apache Cassandra 4.0.20 installed from debian.cassandra.apache.org",
+          "remediable": false
+        },
+        {
+          "id": "2.1",
+          "title": "Ensure authentication is enabled",
+          "status": "FAIL",
+          "type": "automated",
+          "section": "2",
+          "evidence": "authenticator: AllowAllAuthenticator (should be PasswordAuthenticator)",
+          "remediable": true
+        },
+        {
+          "id": "2.2",
+          "title": "Ensure default credentials are changed",
+          "status": "FAIL",
+          "type": "manual",
+          "section": "2",
+          "evidence": "Default cassandra/cassandra account still accessible",
+          "remediable": true
+        },
+        {
+          "id": "3.1",
+          "title": "Ensure role-based access control is configured",
+          "status": "FAIL",
+          "type": "automated",
+          "section": "3",
+          "evidence": "RBAC not fully configured for all keyspaces",
+          "remediable": true
+        },
+        {
+          "id": "3.2",
+          "title": "Ensure permissions are restrictive",
+          "status": "NEEDS_REVIEW",
+          "type": "manual",
+          "section": "3",
+          "evidence": "Manual audit required for permission matrix verification",
+          "remediable": false
+        },
+        {
+          "id": "4.1",
+          "title": "Ensure audit logging is enabled",
+          "status": "FAIL",
+          "type": "automated",
+          "section": "4",
+          "evidence": "audit enabled: false in cassandra.yaml",
+          "remediable": true
+        },
+        {
+          "id": "4.2",
+          "title": "Ensure sufficient audit log storage",
+          "status": "NEEDS_REVIEW",
+          "type": "manual",
+          "section": "4",
+          "evidence": "Log directory: /var/log/cassandra (2.1GB available)",
+          "remediable": false
+        },
+        {
+          "id": "5.1",
+          "title": "Ensure server-to-server encryption (internode) is enabled",
+          "status": "FAIL",
+          "type": "automated",
+          "section": "5",
+          "evidence": "server_encryption_options.enabled: false",
+          "remediable": true
+        },
+        {
+          "id": "5.2",
+          "title": "Ensure client-to-server encryption is enabled",
+          "status": "NEEDS_REVIEW",
+          "type": "automated",
+          "section": "5",
+          "evidence": "client_encryption_options.enabled: false (optional for lab environments)",
+          "remediable": true
+        }
+      ]
+    },
+    {
+      "node": "10.0.1.12",
+      "timestamp": "2026-04-29T10:30:00Z",
+      "score": {
+        "total": 52,
+        "automated": 48,
+        "manual": 4,
+        "passed": 38,
+        "failed": 10,
+        "needs_review": 4,
+        "compliance_pct": 73.1
+      },
+      "checks": [
+        {
+          "id": "1.1",
+          "title": "Ensure that a separate user and group are created for Cassandra",
+          "status": "PASS",
+          "type": "automated",
+          "section": "1",
+          "evidence": "cassandra user exists with GID 1001",
+          "remediable": false
+        },
+        {
+          "id": "1.2",
+          "title": "Ensure Cassandra is installed from official package repository",
+          "status": "PASS",
+          "type": "automated",
+          "section": "1",
+          "evidence": "Apache Cassandra 4.0.20 installed from debian.cassandra.apache.org",
+          "remediable": false
+        },
+        {
+          "id": "2.1",
+          "title": "Ensure authentication is enabled",
+          "status": "FAIL",
+          "type": "automated",
+          "section": "2",
+          "evidence": "authenticator: AllowAllAuthenticator (should be PasswordAuthenticator)",
+          "remediable": true
+        },
+        {
+          "id": "2.2",
+          "title": "Ensure default credentials are changed",
+          "status": "FAIL",
+          "type": "manual",
+          "section": "2",
+          "evidence": "Default cassandra/cassandra account still accessible",
+          "remediable": true
+        },
+        {
+          "id": "3.1",
+          "title": "Ensure role-based access control is configured",
+          "status": "FAIL",
+          "type": "automated",
+          "section": "3",
+          "evidence": "RBAC not fully configured for all keyspaces",
+          "remediable": true
+        },
+        {
+          "id": "3.2",
+          "title": "Ensure permissions are restrictive",
+          "status": "NEEDS_REVIEW",
+          "type": "manual",
+          "section": "3",
+          "evidence": "Manual audit required for permission matrix verification",
+          "remediable": false
+        },
+        {
+          "id": "4.1",
+          "title": "Ensure audit logging is enabled",
+          "status": "FAIL",
+          "type": "automated",
+          "section": "4",
+          "evidence": "audit enabled: false in cassandra.yaml",
+          "remediable": true
+        },
+        {
+          "id": "4.2",
+          "title": "Ensure sufficient audit log storage",
+          "status": "NEEDS_REVIEW",
+          "type": "manual",
+          "section": "4",
+          "evidence": "Log directory: /var/log/cassandra (2.1GB available)",
+          "remediable": false
+        },
+        {
+          "id": "5.1",
+          "title": "Ensure server-to-server encryption (internode) is enabled",
+          "status": "FAIL",
+          "type": "automated",
+          "section": "5",
+          "evidence": "server_encryption_options.enabled: false",
+          "remediable": true
+        },
+        {
+          "id": "5.2",
+          "title": "Ensure client-to-server encryption is enabled",
+          "status": "NEEDS_REVIEW",
+          "type": "automated",
+          "section": "5",
+          "evidence": "client_encryption_options.enabled: false (optional for lab environments)",
+          "remediable": true
+        }
+      ]
+    },
+    {
+      "node": "10.0.1.13",
+      "timestamp": "2026-04-29T10:30:00Z",
+      "score": {
+        "total": 52,
+        "automated": 48,
+        "manual": 4,
+        "passed": 38,
+        "failed": 10,
+        "needs_review": 4,
+        "compliance_pct": 73.1
+      },
+      "checks": [
+        {
+          "id": "1.1",
+          "title": "Ensure that a separate user and group are created for Cassandra",
+          "status": "PASS",
+          "type": "automated",
+          "section": "1",
+          "evidence": "cassandra user exists with GID 1001",
+          "remediable": false
+        },
+        {
+          "id": "1.2",
+          "title": "Ensure Cassandra is installed from official package repository",
+          "status": "PASS",
+          "type": "automated",
+          "section": "1",
+          "evidence": "Apache Cassandra 4.0.20 installed from debian.cassandra.apache.org",
+          "remediable": false
+        },
+        {
+          "id": "2.1",
+          "title": "Ensure authentication is enabled",
+          "status": "FAIL",
+          "type": "automated",
+          "section": "2",
+          "evidence": "authenticator: AllowAllAuthenticator (should be PasswordAuthenticator)",
+          "remediable": true
+        },
+        {
+          "id": "2.2",
+          "title": "Ensure default credentials are changed",
+          "status": "FAIL",
+          "type": "manual",
+          "section": "2",
+          "evidence": "Default cassandra/cassandra account still accessible",
+          "remediable": true
+        },
+        {
+          "id": "3.1",
+          "title": "Ensure role-based access control is configured",
+          "status": "FAIL",
+          "type": "automated",
+          "section": "3",
+          "evidence": "RBAC not fully configured for all keyspaces",
+          "remediable": true
+        },
+        {
+          "id": "3.2",
+          "title": "Ensure permissions are restrictive",
+          "status": "NEEDS_REVIEW",
+          "type": "manual",
+          "section": "3",
+          "evidence": "Manual audit required for permission matrix verification",
+          "remediable": false
+        },
+        {
+          "id": "4.1",
+          "title": "Ensure audit logging is enabled",
+          "status": "FAIL",
+          "type": "automated",
+          "section": "4",
+          "evidence": "audit enabled: false in cassandra.yaml",
+          "remediable": true
+        },
+        {
+          "id": "4.2",
+          "title": "Ensure sufficient audit log storage",
+          "status": "NEEDS_REVIEW",
+          "type": "manual",
+          "section": "4",
+          "evidence": "Log directory: /var/log/cassandra (2.1GB available)",
+          "remediable": false
+        },
+        {
+          "id": "5.1",
+          "title": "Ensure server-to-server encryption (internode) is enabled",
+          "status": "FAIL",
+          "type": "automated",
+          "section": "5",
+          "evidence": "server_encryption_options.enabled: false",
+          "remediable": true
+        },
+        {
+          "id": "5.2",
+          "title": "Ensure client-to-server encryption is enabled",
+          "status": "NEEDS_REVIEW",
+          "type": "automated",
+          "section": "5",
+          "evidence": "client_encryption_options.enabled: false (optional for lab environments)",
+          "remediable": true
+        }
+      ]
+    }
+  ]
+}

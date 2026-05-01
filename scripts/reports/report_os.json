@@ -1,0 +1,21 @@
+{
+  "node": "192.168.3.134",
+  "timestamp": "2026-04-17T18:06:38Z",
+  "score": {
+    "total": 8,
+    "passed": 3,
+    "failed": 5,
+    "manual": 0
+0
+  },
+  "checks": [
+    {"check_id":"OS.1","title":"Disable SWAP memory","status":"PASS","severity":"CRITICAL","current_value":"Swap: 0 MB","expected_value":"Swap is 0","remediation":"Run 'swapoff -a' and remove from /etc/fstab","section":"OS Custom Checks","node":"192.168.3.134","timestamp":"2026-04-17T18:06:37Z"},
+    {"check_id":"OS.2","title":"Strict permissions on cassandra.yaml","status":"PASS","severity":"HIGH","current_value":"600","expected_value":"600 or 640","remediation":"Run 'chmod 600 /etc/cassandra/cassandra.yaml'","section":"OS Custom Checks","node":"192.168.3.134","timestamp":"2026-04-17T18:06:37Z"},
+    {"check_id":"OS.3","title":"Disable SSH Root Login","status":"FAIL","severity":"CRITICAL","current_value":"Unknown","expected_value":"PermitRootLogin no","remediation":"Set PermitRootLogin no in /etc/ssh/sshd_config","section":"OS Custom Checks","node":"192.168.3.134","timestamp":"2026-04-17T18:06:37Z"},
+    {"check_id":"OS.4","title":"Optimize TCP Keepalive Time","status":"FAIL","severity":"MEDIUM","current_value":"7200","expected_value":"<= 300","remediation":"sysctl -w net.ipv4.tcp_keepalive_time=300","section":"OS Custom Checks","node":"192.168.3.134","timestamp":"2026-04-17T18:06:38Z"},
+    {"check_id":"OS.5","title":"Max Open Files Limit","status":"FAIL","severity":"HIGH","current_value":"1024","expected_value":">= 100000","remediation":"Update nofile limits in /etc/security/limits.conf","section":"OS Custom Checks","node":"192.168.3.134","timestamp":"2026-04-17T18:06:38Z"},
+    {"check_id":"OS.6","title":"Configure vm.swappiness","status":"FAIL","severity":"HIGH","current_value":"60","expected_value":"0 or 1","remediation":"sysctl -w vm.swappiness=1","section":"OS Custom Checks","node":"192.168.3.134","timestamp":"2026-04-17T18:06:38Z"},
+    {"check_id":"OS.7","title":"Configure vm.max_map_count","status":"PASS","severity":"MEDIUM","current_value":"1048576","expected_value":">= 1048575","remediation":"sysctl -w vm.max_map_count=1048575","section":"OS Custom Checks","node":"192.168.3.134","timestamp":"2026-04-17T18:06:38Z"},
+    {"check_id":"OS.8","title":"Disable IPv6","status":"FAIL","severity":"LOW","current_value":"0","expected_value":"1","remediation":"sysctl -w net.ipv6.conf.all.disable_ipv6=1","section":"OS Custom Checks","node":"192.168.3.134","timestamp":"2026-04-17T18:06:38Z"}
+  ]
+}

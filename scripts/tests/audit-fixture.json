@@ -1,0 +1,111 @@
+{
+  "node": "10.0.1.11",
+  "timestamp": "2026-04-01T10:00:00Z",
+  "score": {
+    "total": 20,
+    "automated": 11,
+    "manual": 9,
+    "passed": 11,
+    "failed": 9,
+    "needs_review": 0,
+    "compliance_pct": 55
+  },
+  "checks": [
+    {
+      "check_id": "2.1",
+      "title": "Authentication enabled (PasswordAuthenticator)",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "section": "Authentication and Authorization",
+      "current_value": "PasswordAuthenticator",
+      "expected_value": "PasswordAuthenticator",
+      "remediation": "Already compliant",
+      "node": "10.0.1.11",
+      "timestamp": "2026-04-01T10:00:00Z"
+    },
+    {
+      "check_id": "2.2",
+      "title": "Authorization enabled (CassandraAuthorizer)",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "section": "Authentication and Authorization",
+      "current_value": "CassandraAuthorizer",
+      "expected_value": "CassandraAuthorizer",
+      "remediation": "Already compliant",
+      "node": "10.0.1.11",
+      "timestamp": "2026-04-01T10:00:00Z"
+    },
+    {
+      "check_id": "5.1",
+      "title": "Inter-node encryption (TLS)",
+      "status": "FAIL",
+      "severity": "HIGH",
+      "section": "Encryption",
+      "current_value": "internode_encryption: none",
+      "expected_value": "internode_encryption: all",
+      "remediation": "Enable TLS for inter-node communication in cassandra.yaml",
+      "node": "10.0.1.11",
+      "timestamp": "2026-04-01T10:00:00Z"
+    },
+    {
+      "check_id": "5.2",
+      "title": "Client encryption (TLS)",
+      "status": "FAIL",
+      "severity": "HIGH",
+      "section": "Encryption",
+      "current_value": "enabled: false",
+      "expected_value": "enabled: true",
+      "remediation": "Enable client-to-node TLS in cassandra.yaml",
+      "node": "10.0.1.11",
+      "timestamp": "2026-04-01T10:00:00Z"
+    },
+    {
+      "check_id": "4.2",
+      "title": "Auditing is enabled",
+      "status": "FAIL",
+      "severity": "HIGH",
+      "section": "Auditing and Logging",
+      "current_value": "audit_logging_options: disabled",
+      "expected_value": "audit_logging_options: enabled",
+      "remediation": "Enable audit logging in cassandra.yaml",
+      "node": "10.0.1.11",
+      "timestamp": "2026-04-01T10:00:00Z"
+    },
+    {
+      "check_id": "1.5",
+      "title": "Run as non-root user",
+      "status": "PASS",
+      "severity": "HIGH",
+      "section": "Installation and Updates",
+      "current_value": "cassandra",
+      "expected_value": "non-root",
+      "remediation": "Already compliant",
+      "node": "10.0.1.11",
+      "timestamp": "2026-04-01T10:00:00Z"
+    },
+    {
+      "check_id": "1.2",
+      "title": "Latest Java version installed",
+      "status": "PASS",
+      "severity": "MEDIUM",
+      "section": "Installation and Updates",
+      "current_value": "openjdk 8u402",
+      "expected_value": "openjdk 8 LTS",
+      "remediation": "Already compliant",
+      "node": "10.0.1.11",
+      "timestamp": "2026-04-01T10:00:00Z"
+    },
+    {
+      "check_id": "3.1",
+      "title": "cassandra and superuser roles are separate",
+      "status": "PASS",
+      "severity": "CRITICAL",
+      "section": "Access Control",
+      "current_value": "dedicated admin role",
+      "expected_value": "dedicated admin role",
+      "remediation": "Already compliant",
+      "node": "10.0.1.11",
+      "timestamp": "2026-04-01T10:00:00Z"
+    }
+  ]
+}
