@@ -287,130 +287,161 @@ nginx will auto-redirect HTTP → HTTPS.
 
 ## GitHub Actions CI/CD Automation
 
-Fully automated deployment and infrastructure management via GitHub Actions.
+Fully automated testing and manual deployment workflows via GitHub Actions.
+
+### Architecture Overview
+
+Three separate workflows, all **manual-triggered** for safety:
+
+1. **Deploy Infrastructure** (`deploy-infrastructure.yml`)
+   - Runs `terraform apply` to create VMs
+   - Triggered manually to prevent accidental infrastructure changes
+
+2. **Deploy to Master VM** (`deploy-to-production.yml`)
+   - Runs tests, builds frontend, deploys code to Master
+   - Automatically extracts Master IP from Terraform outputs
+   - No MASTER_IP secret needed!
+
+3. **Destroy Infrastructure** (`destroy-infrastructure.yml`)
+   - Runs `terraform destroy` to delete all VMs
+   - Double-confirmation required
 
 ### Prerequisites
 
 1. Repository must be on GitHub
 2. SSH key for Master VM access (uses same key as Terraform: `ssh/id_rsa`)
-3. Azure service account configured with OIDC (for infrastructure destruction)
+3. Azure service account configured with OIDC (one-time setup)
 
 ---
 
-### Part 1: Set Up SSH Secrets (For Deployment Workflow)
+### Part 1: Azure OIDC Setup (One-Time)
 
-**⚠️ IMPORTANT: SSH Key Security**
+The workflows authenticate to Azure using OIDC (no credentials stored in GitHub — more secure).
 
-The SSH private key in `ssh/id_rsa` is used by:
-- GitHub Actions to deploy to Master VM
-- Master VM to communicate with Cassandra nodes (db1, db2, db3)
-- CIS audit scripts to SSH into cluster nodes
-
-**This is the SAME key configured in `terraform/terraform.tfvars`.**
-
-#### Step 1: Prepare Your SSH Private Key
+#### Step 1: Create Azure Service Principal
 
 ```bash
-# On your machine, get the contents of your SSH private key
-cat ssh/id_rsa
+# Create service principal
+az ad app create --display-name "cis-cassandra-github-actions"
+# Save the appId from output
+
+# Get your Azure IDs
+$TENANT_ID = $(az account show --query tenantId -o tsv)
+$SUBSCRIPTION_ID = $(az account show --query id -o tsv)
+$APP_ID = "<paste-appId-from-above>"
 ```
 
-#### Step 2: Add to GitHub Secrets
-
-1. Go to your GitHub repository
-2. Settings → Secrets and variables → Actions
-3. Click **New repository secret**
-4. Create these secrets:
-
-| Secret Name | Value |
-|---|---|
-| `MASTER_IP` | Your Master VM public IP (e.g., `20.195.123.45`) |
-| `MASTER_SSH_PRIVATE_KEY` | Full contents of `ssh/id_rsa` file (BEGIN RSA PRIVATE KEY...END RSA PRIVATE KEY) |
-
-**Example:**
-```
------BEGIN RSA PRIVATE KEY-----
-MIIEpAIBAAKCAQEA3k7G8j9K...
-[... rest of key ...]
------END RSA PRIVATE KEY-----
-```
-
-#### Step 3: Verify Secret Configuration
+#### Step 2: Create OIDC Federated Credential
 
 ```bash
-# After adding secrets, verify SSH works from GitHub Actions
-# This is automatic when you push to main or manually trigger the workflow
+az ad app federated-credential create \
+  --id $APP_ID \
+  --parameters @-
+{
+  "name": "github-actions",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:YOUR_GITHUB_ORG/cis-cassandra-main:ref:refs/heads/main",
+  "audiences": ["api://AzureADTokenExchange"]
+}
 ```
+
+#### Step 3: Grant Azure Permissions
+
+```bash
+az role assignment create \
+  --assignee $APP_ID \
+  --role Contributor \
+  --scope /subscriptions/$SUBSCRIPTION_ID
+```
+
+#### Step 4: Add GitHub Secrets
+
+1. Go to GitHub Repo → Settings → Secrets and variables → Actions
+2. Create these secrets:
+
+| Secret | Value |
+|--------|-------|
+| `AZURE_CLIENT_ID` | $APP_ID from Step 1 |
+| `AZURE_TENANT_ID` | $TENANT_ID from Step 1 |
+| `AZURE_SUBSCRIPTION_ID` | $SUBSCRIPTION_ID from Step 1 |
+| `MASTER_SSH_PRIVATE_KEY` | Full contents of `ssh/id_rsa` |
 
 ---
 
-### Part 2: Deployment Workflow (`deploy-to-production.yml`)
+### Part 2: Deploy Infrastructure (Manual Workflow)
 
-Automatically tests and deploys your code when you push to `main`.
+Creates all Azure VMs and networking for your Cassandra cluster.
 
-**What it does:**
-1. ✅ Runs all Python tests (backend)
-2. ✅ Runs all JavaScript tests (frontend)
-3. ✅ Builds React frontend
-4. ✅ SSHes into Master VM with `ssh/id_rsa` private key
-5. ✅ Executes `scripts/deploy-to-master.sh`
-6. ✅ Verifies backend and frontend are running
-7. ✅ Reports success/failure
+#### Trigger Deployment:
 
-**Trigger deployment:**
+1. Go to GitHub → **Actions** tab
+2. Click **Deploy Infrastructure (Terraform Apply)**
+3. Click **Run workflow**
+4. Enter confirmation: `deploy-infrastructure` (exactly)
+5. Click **Run workflow**
 
-```bash
-# Option 1: Automatic on push to main
-git push origin main
+#### What Happens:
 
-# Option 2: Manual trigger from GitHub Actions tab
-# Actions → Deploy to Production → Run workflow
-```
-
-**Monitor progress:**
-- Go to GitHub repository
-- Click **Actions** tab
-- Click the active workflow run
-- Watch real-time logs
-
-**SSH Key Flow in Deployment Workflow:**
-```
-GitHub Actions Runner
-  ↓ (uses MASTER_SSH_PRIVATE_KEY secret)
-  ├─ SSH to Master (cassandra@<MASTER_IP>)
-  │   ↓
-  │   └─ Deploy script clones/pulls repo
-  │   └─ Installs dependencies
-  │   └─ Builds frontend
-  │   └─ Starts backend systemd service
-  │   └─ Reloads nginx
-  │
-  └─ Master VM has ssh/id_rsa
-      ↓ (same key, configured in Master during Terraform)
-      ├─ SSH to db1 (10.0.1.11) for CIS audits
-      ├─ SSH to db2 (10.1.1.12)
-      └─ SSH to db3 (10.1.1.13)
-```
-
-**Example Workflow Output:**
 ```
 ✅ Checkout code
-✅ Set up Python 3.12
-✅ Install backend dependencies
-✅ Run backend tests (pytest)
-✅ Set up Node 20
-✅ Install frontend dependencies
-✅ Run frontend tests (vitest)
-✅ Build frontend (Vite)
-✅ Configure SSH for deployment
-✅ Test SSH connectivity to Master
-✅ Deploy application to Master VM
-✅ Wait for services to stabilize
-✅ Verify backend health
-✅ Verify frontend is accessible
-✅ Check service status on Master
+✅ Initialize Terraform
+✅ Validate configuration
+✅ Plan infrastructure (shows what will be created)
+✅ Apply Terraform (creates 4 VMs across 2 Azure regions)
+✅ Save outputs to infra-outputs.json
+✅ Wait 60 seconds for VMs to boot
+✅ Test SSH connectivity
+```
 
+#### Expected Output:
+
+```json
+{
+  "master_public_ip": { "value": "20.195.123.45" },
+  "node_ips": { "value": ["10.0.1.11", "10.0.1.12", "10.1.1.13"] },
+  ...
+}
+```
+
+#### Next Step:
+
+Wait 3-5 minutes for Cassandra to bootstrap, then proceed to **Part 3**.
+
+---
+
+### Part 3: Deploy Application to Master VM (Manual Workflow)
+
+Deploys CIS Cassandra frontend + backend to the Master VM created by Part 2.
+
+#### Trigger Deployment:
+
+1. Go to **Actions** tab
+2. Click **Deploy to Master VM (Manual)**
+3. Click **Run workflow**
+4. Choose environment: `production` or `staging`
+5. Click **Run workflow**
+
+#### What Happens:
+
+```
+✅ Extract Master IP from terraform.tfstate (NO SECRET NEEDED!)
+✅ Run all tests (Python + JavaScript)
+✅ Build React frontend
+✅ SSH to Master VM using ssh/id_rsa private key
+✅ Execute deployment script
+✅ Verify backend health endpoint
+✅ Verify frontend is accessible
+✅ Report success with URLs
+```
+
+**No manual IP configuration needed** — automatically fetched from Terraform! 🎯
+
+#### Expected Result:
+
+```
 ✅ DEPLOYMENT SUCCESSFUL
+
+🎉 Your application is live!
    Frontend:  http://20.195.123.45
    Backend:   http://20.195.123.45/api
    API Docs:  http://20.195.123.45/api/docs
@@ -418,214 +449,134 @@ GitHub Actions Runner
 
 ---
 
-### Part 3: Infrastructure Destruction Workflow (`destroy-infrastructure.yml`)
+### Part 4: Destroy Infrastructure (Manual Workflow)
 
-⚠️ **DANGER: This permanently deletes all Azure infrastructure**
+Permanently deletes all VMs and Azure resources.
 
-**What it does:**
-1. ✅ Requires manual confirmation
-2. ✅ Backs up Terraform state before destruction
-3. ✅ Gracefully stops services on Master VM
-4. ✅ Authenticates to Azure via OIDC
-5. ✅ Runs `terraform destroy -auto-approve`
-6. ✅ Saves destruction report
+#### Trigger Destruction:
 
-**When to use:**
-- End of project/semester
-- Cost reduction
-- Testing terraform reproducibility
-- Cleaning up dev environments
+1. Go to **Actions** tab
+2. Click **Destroy Infrastructure (Terraform)**
+3. Click **Run workflow**
+4. Enter confirmation: `destroy-all-infrastructure` (exactly)
+5. Click **Run workflow**
 
-**Trigger destruction:**
+#### What Happens:
 
-```bash
-# ONLY via GitHub Actions Manual Trigger
-# Actions → Destroy Infrastructure → Run workflow
-# When prompted for confirmation, type: destroy-all-infrastructure
 ```
-
-**OIDC Setup (One-time, required for destroy workflow):**
-
-The destroy workflow uses Azure OIDC for secure authentication (no stored credentials).
-
-#### Step 1: Create Azure Service Principal
-
-```bash
-# In Azure CLI, create a service principal for GitHub Actions
-az ad app create --display-name "cis-cassandra-github-actions"
-# Save the output, especially the Application ID
-
-# Get your Azure Tenant ID
-az account show --query tenantId -o tsv
-
-# Get your subscription ID
-az account show --query id -o tsv
-```
-
-#### Step 2: Create OIDC Federated Credential
-
-Replace `<APP_ID>` with the Application ID from Step 1:
-
-```bash
-# Create OIDC credential
-az ad app federated-credential create \
-  --id <APP_ID> \
-  --parameters '{
-    "name": "github-actions",
-    "issuer": "https://token.actions.githubusercontent.com",
-    "subject": "repo:YOUR_GITHUB_ORG/cis-cassandra-main:ref:refs/heads/main",
-    "audiences": ["api://AzureADTokenExchange"]
-  }'
-```
-
-#### Step 3: Grant Azure Role to Service Principal
-
-```bash
-# Assign Contributor role to the service principal
-az role assignment create \
-  --assignee <APP_ID> \
-  --role Contributor \
-  --scope /subscriptions/<SUBSCRIPTION_ID>
-```
-
-#### Step 4: Add GitHub Secrets for Azure OIDC
-
-1. Go to GitHub → Settings → Secrets and variables → Actions
-2. Add these secrets:
-
-| Secret Name | Value |
-|---|---|
-| `AZURE_CLIENT_ID` | Application ID from Step 1 |
-| `AZURE_TENANT_ID` | Tenant ID from Step 1 |
-| `AZURE_SUBSCRIPTION_ID` | Subscription ID from Step 1 |
-
-#### Step 5: Verify OIDC Setup
-
-```bash
-# Test by manually triggering the workflow
-# Actions → Destroy Infrastructure → Run workflow (don't confirm yet)
-# It should reach the "Show destruction warning" step
-
-# Then Cancel and re-run with proper confirmation
+✅ Safety check (requires confirmation)
+✅ Back up terraform.tfstate
+✅ Gracefully stop services on Master VM
+✅ Run terraform destroy -auto-approve
+✅ Verify all resources deleted
 ```
 
 ---
 
-### SSH Key Management Best Practices
+## SSH Key Security & Architecture
 
-Since the same SSH key is used throughout the infrastructure:
+Your setup uses the **SAME SSH key throughout**:
 
-#### ✅ DO:
+```
+GitHub Actions
+  ↓ (uses MASTER_SSH_PRIVATE_KEY secret)
+  └─ SSH to cassandra@<MASTER_IP>
+     ├─ Deploy script clones/pulls repo
+     ├─ Builds frontend
+     └─ Restarts services
+        └─ Master VM has /home/cassandra/.ssh/id_rsa
+           ↓ (same key, configured by Terraform)
+           ├─ SSH to db1 (10.0.1.11) for CIS audits
+           ├─ SSH to db2 (10.1.1.12)
+           └─ SSH to db3 (10.1.1.13)
+```
+
+### Best Practices:
+
+✅ **DO:**
 - Keep `ssh/id_rsa` in `.gitignore` (already done)
-- Use strong passphrase if key is unencrypted locally
-- Rotate keys periodically (create new key pair, update Terraform, re-encrypt)
-- Grant minimal permissions (read-only where possible)
-- Audit SSH access logs on Master VM: `sudo journalctl -u ssh`
+- Use strong passphrase if key is local
+- Rotate keys periodically
+- Audit SSH access: `sudo journalctl -u ssh -f`
 
-#### ❌ DON'T:
+❌ **DON'T:**
 - Commit `ssh/id_rsa` to Git
-- Share the private key in messages/emails
-- Use the same key for multiple projects
-- Leave SSH keys with empty passphrases on shared machines
-
-#### View SSH Usage on Master VM:
-
-```bash
-ssh cassandra@<MASTER_IP>
-
-# Check SSH login history
-sudo journalctl -u ssh -n 50
-
-# Monitor real-time SSH connections
-sudo journalctl -u ssh -f
-
-# Check which nodes were accessed
-grep "Accepted publickey\|Accepted password" /var/log/auth.log | tail -20
-```
+- Share the private key
+- Use same key for multiple projects
+- Leave keys with empty passphrases on shared machines
 
 ---
 
-### Troubleshooting CI/CD Workflows
+## Workflow Comparison
 
-#### Deployment fails with "Permission denied (publickey)"
+| Workflow | Trigger | Purpose | Auto IP |
+|----------|---------|---------|---------|
+| Deploy Infrastructure | Manual only | Create VMs | N/A |
+| Deploy to Master VM | Manual only | Test + Deploy code | ✅ Yes |
+| Destroy Infrastructure | Manual only | Delete all resources | N/A |
 
-```bash
-# SSH key is not correctly configured
-# Check:
-1. MASTER_SSH_PRIVATE_KEY secret contains full key (BEGIN...END)
-2. MASTER_IP secret is correct
-3. Key matches the public key on Master VM (~/.ssh/authorized_keys)
-
-# Verify locally:
-ssh -i ssh/id_rsa cassandra@<MASTER_IP> "echo 'Test'"
-```
-
-#### Tests fail but deployment still proceeds
-
-```bash
-# Tests are marked as continue-on-error in the workflow
-# To make tests blocking:
-# Edit .github/workflows/deploy-to-production.yml
-# Change "continue-on-error: true" to "continue-on-error: false"
-```
-
-#### Terraform destroy fails with "authorization denied"
-
-```bash
-# Azure OIDC token expired or permissions insufficient
-# Verify:
-1. AZURE_CLIENT_ID, AZURE_TENANT_ID are correct
-2. Service principal has Contributor role
-3. Subscription ID is correct
-4. OIDC credential hasn't expired (check Azure Portal)
-
-# Redeploy OIDC if needed:
-az ad app delete --id <APP_ID>
-# Then follow OIDC setup steps again
-```
-
-#### Master VM becomes unreachable
-
-```bash
-# If SSH hangs or times out:
-1. Verify Master is still running in Azure Portal
-2. Check if IP changed (get from terraform output -json)
-3. Update MASTER_IP secret in GitHub
-4. Update security group rules in Azure if your IP changed
-5. Verify ~/.ssh/known_hosts doesn't have stale entries
-
-# From your machine:
-ssh-keygen -R <OLD_MASTER_IP>
-```
+**Why Manual?** Prevents accidental deployments/destruction from code commits.
 
 ---
 
-### Manual Deployment (When Automation Fails)
+## Troubleshooting
 
-If the CI/CD workflow fails, you can deploy manually:
+### "terraform.tfstate not found"
+
+**Cause:** Infrastructure not deployed yet
+
+**Fix:** Run "Deploy Infrastructure" workflow first
+
+---
+
+### "Permission denied (publickey)"
+
+**Cause:** SSH key not configured correctly
+
+**Fix:** Verify `MASTER_SSH_PRIVATE_KEY` secret contains the full key (BEGIN...END)
+
+---
+
+### "Master IP extraction failed"
+
+**Cause:** Terraform outputs format changed
+
+**Fix:** Check `infra-outputs.json` artifact in workflow run
+
+---
+
+### Cassandra cluster not forming
+
+**Cause:** VMs still booting
+
+**Fix:** Wait 3-5 minutes and re-run deployment workflow
+
+---
+
+## Manual Deployment (When Workflows Fail)
+
+If automation fails, deploy manually:
 
 ```bash
-# On your machine (with ssh/id_rsa)
+# Get Master IP from terraform
+cd terraform
+terraform output -raw master_public_ip
+
+# Deploy manually
 bash scripts/deploy-to-master.sh <MASTER_IP> ssh/id_rsa
-
-# Or manually SSH and run deployment steps:
-ssh -A cassandra@<MASTER_IP>
-cd ~/app/cis-cassandra-main
-git pull origin main
-cd backend && pip install -r requirements.txt
-cd ../frontend && npm ci && npm run build
-sudo systemctl restart cis-backend nginx
 ```
 
 ---
 
-### Next Steps
+## Next Steps After First Deploy
 
-1. ✅ Configure SSH secrets (`MASTER_IP`, `MASTER_SSH_PRIVATE_KEY`)
-2. ✅ (Optional) Set up Azure OIDC for destroy workflow
-3. ✅ Push code to main branch
-4. ✅ Watch deployment in Actions tab
+1. ✅ Set up Azure OIDC (Part 1)
+2. ✅ Run "Deploy Infrastructure" workflow (Part 2)
+3. ✅ Wait 5 minutes for Cassandra bootstrap
+4. ✅ Run "Deploy to Master VM" workflow (Part 3)
 5. ✅ Access application at `http://<MASTER_IP>`
+
+Enjoy! 🚀
 
 ---
 

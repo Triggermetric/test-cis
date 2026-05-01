@@ -1,0 +1,155 @@
+name: Deploy Infrastructure (Terraform Apply)
+
+on:
+  workflow_dispatch:  # Manual trigger ONLY - creates VMs
+    inputs:
+      confirmation:
+        description: 'Type "deploy-infrastructure" to confirm'
+        required: true
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Safety Check
+  # ─────────────────────────────────────────────────────────────
+  safety-check:
+    name: Safety Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Verify deployment confirmation
+        run: |
+          CONFIRMATION="${{ github.event.inputs.confirmation }}"
+          if [ "$CONFIRMATION" != "deploy-infrastructure" ]; then
+            echo "❌ DEPLOYMENT CANCELLED"
+            echo ""
+            echo "Safety check failed. You must enter exactly:"
+            echo "  deploy-infrastructure"
+            echo ""
+            echo "Provided: '$CONFIRMATION'"
+            exit 1
+          fi
+          echo "✓ Safety check passed"
+
+  # ─────────────────────────────────────────────────────────────
+  # Terraform Apply
+  # ─────────────────────────────────────────────────────────────
+  terraform-deploy:
+    name: Create Infrastructure with Terraform
+    needs: safety-check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ~> 1.0
+
+      # ─────────────────────────────────────────────────────────
+      # Azure Authentication via OIDC
+      # ─────────────────────────────────────────────────────────
+
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Initialize Terraform
+        run: |
+          cd terraform
+          terraform init
+          echo "[✓] Terraform initialized"
+
+      - name: Validate Terraform configuration
+        run: |
+          cd terraform
+          terraform validate
+          echo "[✓] Configuration is valid"
+
+      - name: Plan infrastructure deployment
+        run: |
+          cd terraform
+          terraform plan -out=tfplan
+          echo "[✓] Plan created"
+
+      - name: Apply Terraform (Deploy VMs)
+        run: |
+          cd terraform
+          echo "🚀 DEPLOYING INFRASTRUCTURE (takes 5-10 minutes)..."
+          terraform apply tfplan
+          echo "[✓] Infrastructure deployed"
+
+      - name: Save Terraform outputs
+        run: |
+          cd terraform
+          terraform output -json > ../infra-outputs.json
+          echo "[✓] Outputs saved to infra-outputs.json"
+
+      - name: Display deployment details
+        run: |
+          echo ""
+          echo "╔════════════════════════════════════════════════════════╗"
+          echo "║  INFRASTRUCTURE DEPLOYMENT COMPLETE                  ║"
+          echo "╚════════════════════════════════════════════════════════╝"
+          echo ""
+          cat infra-outputs.json | jq .
+          echo ""
+          echo "📝 Next steps:"
+          echo "   1. VMs are booting up (Cassandra takes 3-5 minutes)"
+          echo "   2. Run: Deploy to Master VM workflow (manual trigger)"
+          echo "   3. Access application at: http://<MASTER_IP>"
+
+      - name: Upload outputs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: infrastructure-outputs
+          path: infra-outputs.json
+          retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────
+  # Verification
+  # ─────────────────────────────────────────────────────────────
+  verify:
+    name: Verify Infrastructure
+    needs: terraform-deploy
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: infrastructure-outputs
+
+      - name: Wait for VMs to boot (60 seconds)
+        run: |
+          echo "Waiting for VMs to start..."
+          sleep 60
+
+      - name: Test SSH connectivity
+        continue-on-error: true
+        run: |
+          MASTER_IP=$(jq -r '.master_public_ip.value' infra-outputs.json)
+          echo "Testing SSH to Master VM: $MASTER_IP"
+          
+          # Configure SSH key from secrets
+          mkdir -p ~/.ssh
+          echo "${{ secrets.MASTER_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $MASTER_IP >> ~/.ssh/known_hosts 2>/dev/null || true
+          
+          # Test connection (may fail if still booting)
+          ssh -o ConnectTimeout=10 cassandra@$MASTER_IP "echo '[✓] SSH connection successful'" || \
+            echo "[⚠] Master still booting, try again in a few minutes"

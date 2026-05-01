@@ -9,6 +9,12 @@ dist/
 .pytest_cache/
 *.egg-info/
 
+# SSH Keys (NEVER COMMIT PRIVATE KEYS)
+ssh/id_rsa
+ssh/id_rsa.pub
+ssh/*.pem
+ssh/known_hosts
+
 # Terraform
 .terraform/
 *.tfstate

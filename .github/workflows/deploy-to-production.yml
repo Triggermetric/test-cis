@@ -1,20 +1,68 @@
-name: Deploy to Production
+name: Deploy to Master VM (Manual)
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:  # Manual trigger for flexibility
+  workflow_dispatch:  # Manual trigger ONLY - safer!
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+        default: 'production'
 
 permissions:
   contents: read
-  id-token: write  # For OIDC (if using Azure authentication)
+  id-token: write
 
 concurrency:
-  group: deploy-production-${{ github.ref }}
-  cancel-in-progress: false  # Don't cancel deployments mid-flight
+  group: deploy-production-manual
+  cancel-in-progress: false
 
 jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Job 0 — Extract Master IP from Terraform
+  # ─────────────────────────────────────────────────────────────
+  get-master-ip:
+    name: Get Master IP from Terraform
+    runs-on: ubuntu-latest
+    outputs:
+      master_ip: ${{ steps.terraform-output.outputs.master_ip }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ~> 1.0
+
+      - name: Get Master IP from Terraform outputs
+        id: terraform-output
+        run: |
+          cd terraform
+          terraform init -backend=false 2>/dev/null || true
+          
+          # Try to get from terraform.tfstate first
+          if [ -f "terraform.tfstate" ]; then
+            MASTER_IP=$(jq -r '.outputs.master_public_ip.value // empty' terraform.tfstate)
+            if [ -z "$MASTER_IP" ]; then
+              echo "❌ Could not find master_public_ip in terraform state"
+              exit 1
+            fi
+          else
+            echo "❌ ERROR: terraform.tfstate not found!"
+            echo ""
+            echo "The infrastructure must be deployed first!"
+            echo "Run the 'Deploy Infrastructure' workflow to create VMs."
+            exit 1
+          fi
+          
+          echo "master_ip=$MASTER_IP" >> $GITHUB_OUTPUT
+          echo "[✓] Master IP: $MASTER_IP"
+
   # ─────────────────────────────────────────────────────────────
   # Job 1 — Test all components before deployment
   # ─────────────────────────────────────────────────────────────
@@ -71,13 +119,19 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   deploy:
     name: Deploy to Master VM
-    needs: test
+    needs: [test, get-master-ip]
     runs-on: ubuntu-latest
     if: success()  # Only run if tests passed
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Display deployment details
+        run: |
+          echo "🚀 Deployment starting..."
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Master IP: ${{ needs.get-master-ip.outputs.master_ip }}"
 
       # ─────────────────────────────────────────────────────────
       # SSH Setup — Critical for cluster-wide communication
@@ -96,26 +150,22 @@ jobs:
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          # Add master to known_hosts to avoid StrictHostKeyChecking prompt
-          ssh-keyscan -H ${{ secrets.MASTER_IP }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H ${{ needs.get-master-ip.outputs.master_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
           echo "[✓] SSH key configured"
 
       - name: Test SSH connectivity to Master
         run: |
           ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
-            cassandra@${{ secrets.MASTER_IP }} "echo '[✓] SSH connection successful'"
+            cassandra@${{ needs.get-master-ip.outputs.master_ip }} "echo '[✓] SSH connection successful'"
 
       # ─────────────────────────────────────────────────────────
       # Deployment Execution
       # ─────────────────────────────────────────────────────────
 
       - name: Deploy application to Master VM
-        env:
-          MASTER_IP: ${{ secrets.MASTER_IP }}
-          SSH_KEY: ~/.ssh/id_rsa
         run: |
-          echo "Deploying to Master VM at $MASTER_IP..."
-          bash scripts/deploy-to-master.sh "$MASTER_IP" "$SSH_KEY"
+          echo "Deploying to Master VM at ${{ needs.get-master-ip.outputs.master_ip }}..."
+          bash scripts/deploy-to-master.sh "${{ needs.get-master-ip.outputs.master_ip }}" ~/.ssh/id_rsa
 
       - name: Wait for services to stabilize
         run: |
@@ -130,10 +180,11 @@ jobs:
         continue-on-error: true
         run: |
           echo "Checking backend health endpoint..."
+          MASTER_IP="${{ needs.get-master-ip.outputs.master_ip }}"
           for i in {1..5}; do
-            if curl -sf http://${{ secrets.MASTER_IP }}/api/health > /dev/null 2>&1; then
+            if curl -sf http://$MASTER_IP/api/health > /dev/null 2>&1; then
               echo "[✓] Backend is healthy"
-              curl -s http://${{ secrets.MASTER_IP }}/api/health | jq .
+              curl -s http://$MASTER_IP/api/health | jq .
               exit 0
             fi
             echo "Attempt $i/5: waiting..."
@@ -145,7 +196,8 @@ jobs:
         continue-on-error: true
         run: |
           echo "Checking frontend..."
-          if curl -sf http://${{ secrets.MASTER_IP }}/ > /dev/null 2>&1; then
+          MASTER_IP="${{ needs.get-master-ip.outputs.master_ip }}"
+          if curl -sf http://$MASTER_IP/ > /dev/null 2>&1; then
             echo "[✓] Frontend is accessible"
           else
             echo "[⚠] Frontend may still be starting"
@@ -155,7 +207,7 @@ jobs:
         continue-on-error: true
         run: |
           echo "Checking systemd services..."
-          ssh -o ConnectTimeout=5 cassandra@${{ secrets.MASTER_IP }} \
+          ssh -o ConnectTimeout=5 cassandra@${{ needs.get-master-ip.outputs.master_ip }} \
             "sudo systemctl status cis-backend nginx --no-pager" || true
 
   # ─────────────────────────────────────────────────────────────
@@ -163,14 +215,14 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   notify:
     name: Deployment Notification
-    needs: [test, deploy]
+    needs: [test, deploy, get-master-ip]
     runs-on: ubuntu-latest
     if: always()
 
     steps:
       - name: Report deployment result
         run: |
-          MASTER_URL="http://${{ secrets.MASTER_IP }}"
+          MASTER_URL="http://${{ needs.get-master-ip.outputs.master_ip }}"
           if [ "${{ needs.deploy.result }}" == "success" ]; then
             echo "✅ DEPLOYMENT SUCCESSFUL"
             echo ""
@@ -180,7 +232,7 @@ jobs:
             echo "   API Docs:  $MASTER_URL/api/docs"
             echo ""
             echo "📝 To update deployed code after pushing:"
-            echo "   ssh cassandra@${{ secrets.MASTER_IP }}"
+            echo "   ssh cassandra@${{ needs.get-master-ip.outputs.master_ip }}"
             echo "   cd ~/app/cis-cassandra-main && git pull"
             echo "   cd frontend && npm run build"
             echo "   sudo systemctl restart cis-backend nginx"
