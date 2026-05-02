@@ -70,24 +70,20 @@ jobs:
             echo "ERROR: MASTER_SSH_PRIVATE_KEY secret is required"
             exit 1
           fi
-          if [ -z "${{ secrets.ALLOWED_SSH_IPS }}" ]; then
-            echo "ERROR: ALLOWED_SSH_IPS secret is required"
-            exit 1
-          fi
 
           echo "${{ secrets.MASTER_SSH_PRIVATE_KEY }}" > terraform/ssh/id_rsa
           chmod 600 terraform/ssh/id_rsa
           ssh-keygen -y -f terraform/ssh/id_rsa > terraform/ssh/id_rsa.pub
 
           cat > terraform/terraform.tfvars <<EOF
-          project_name        = "cis-cassandra"
-          resource_group_name = "cis-cassandra-rg"
-          location             = "Korea Central"
-          secondary_location   = "Southeast Asia"
-          vm_size              = "Standard_B2as_v2"
-          ssh_public_key_path  = "ssh/id_rsa.pub"
-          allowed_ssh_ips      = ${ALLOWED_SSH_IPS}
-          EOF
+project_name        = "cis-cassandra"
+resource_group_name = "cis-cassandra-rg"
+location             = "Korea Central"
+secondary_location   = "Southeast Asia"
+vm_size              = "Standard_B2as_v2"
+ssh_public_key_path  = "ssh/id_rsa.pub"
+allowed_ssh_ips      = ["0.0.0.0/0"]
+EOF
 
       - name: Initialize Terraform
         run: |
