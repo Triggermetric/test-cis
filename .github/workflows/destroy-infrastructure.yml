@@ -120,7 +120,7 @@ jobs:
       - name: Initialize Terraform
         run: |
           cd terraform
-          terraform init
+          terraform init -input=false
           echo "[✓] Terraform initialized"
 
       - name: Validate Terraform configuration
