@@ -77,7 +77,7 @@ else
 fi
 
 # Install Python deps
-pip install -r "$BACKEND_DIR/requirements.txt"
+pip install -r requirements.txt
 
 # Create systemd service for backend
 echo "Installing backend systemd service..."
