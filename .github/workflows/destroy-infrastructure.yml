@@ -102,7 +102,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: terraform-state
-          path: terraform/
         continue-on-error: true
 
       # ─────────────────────────────────────────────────────────
@@ -150,6 +149,13 @@ jobs:
 
       - name: Initialize Terraform
         run: |
+          echo "📋 Files in current directory:"
+          ls -la || true
+          echo ""
+          echo "📋 Files in terraform directory:"
+          ls -la terraform/ || true
+          echo ""
+          
           cd terraform
           terraform init -input=false
           echo "[✓] Terraform initialized"
