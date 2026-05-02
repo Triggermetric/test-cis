@@ -52,7 +52,7 @@ if [ -d "cis-cassandra-main" ]; then
     cd ..
 else
     echo "Cloning repo..."
-    git clone "$REPO_URL" cis-cassandra-main
+    git clone "https://github.com/Triggermetric/test-cis" cis-cassandra-main
 fi
 
 cd cis-cassandra-main
