@@ -119,6 +119,13 @@ npm install
 # Build frontend
 npm run build
 
+if ! command -v nginx &> /dev/null; then
+    echo "Nginx not found. Installing Nginx..."
+    sudo apt-get update
+    sudo apt-get install -y nginx
+    echo "[OK] Nginx installed."
+fi
+
 # Create nginx config for frontend + API proxy
 echo "Configuring nginx..."
 sudo tee /etc/nginx/sites-available/cis-cassandra > /dev/null <<'NGINX_CONF'
