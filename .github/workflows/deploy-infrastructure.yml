@@ -94,6 +94,13 @@ jobs:
           terraform output -json > ../infra-outputs.json
           echo "[✓] Outputs saved to infra-outputs.json"
 
+      - name: Extract and Display Master IP
+        id: master-ip
+        run: |
+          MASTER_IP=$(jq -r '.master_public_ip.value' infra-outputs.json)
+          echo "master_ip=$MASTER_IP" >> $GITHUB_OUTPUT
+          echo "Master IP: $MASTER_IP"
+
       - name: Display deployment details
         run: |
           echo ""
@@ -101,12 +108,17 @@ jobs:
           echo "║  INFRASTRUCTURE DEPLOYMENT COMPLETE                  ║"
           echo "╚════════════════════════════════════════════════════════╝"
           echo ""
+          echo "Master Public IP: ${{ steps.master-ip.outputs.master_ip }}"
+          echo ""
+          echo "All outputs:"
           cat infra-outputs.json | jq .
           echo ""
+          echo "⏱️  WAIT 3-5 MINUTES for Cassandra to boot!"
+          echo ""
           echo "📝 Next steps:"
-          echo "   1. VMs are booting up (Cassandra takes 3-5 minutes)"
-          echo "   2. Run: Deploy to Master VM workflow (manual trigger)"
-          echo "   3. Access application at: http://<MASTER_IP>"
+          echo "   1. Wait for Cassandra to be ready (3-5 min)"
+          echo "   2. Run: Deploy to Master VM workflow"
+          echo "   3. Access application at: http://${{ steps.master-ip.outputs.master_ip }}"
 
       - name: Upload outputs artifact
         uses: actions/upload-artifact@v4

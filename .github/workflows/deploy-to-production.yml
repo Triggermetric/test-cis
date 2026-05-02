@@ -45,18 +45,25 @@ jobs:
           cd terraform
           terraform init -backend=false 2>/dev/null || true
           
-          # Try to get from terraform.tfstate first
+          # Try to get from terraform.tfstate if available
+          MASTER_IP=""
           if [ -f "terraform.tfstate" ]; then
-            MASTER_IP=$(jq -r '.outputs.master_public_ip.value // empty' terraform.tfstate)
-            if [ -z "$MASTER_IP" ]; then
-              echo "❌ Could not find master_public_ip in terraform state"
-              exit 1
-            fi
-          else
-            echo "❌ ERROR: terraform.tfstate not found!"
+            MASTER_IP=$(jq -r '.outputs.master_public_ip.value // empty' terraform.tfstate 2>/dev/null)
+          fi
+          
+          # If not found in state, try terraform output command
+          if [ -z "$MASTER_IP" ] || [ "$MASTER_IP" == "null" ]; then
+            MASTER_IP=$(terraform output -raw master_public_ip 2>/dev/null || echo "")
+          fi
+          
+          if [ -z "$MASTER_IP" ] || [ "$MASTER_IP" == "null" ]; then
+            echo "❌ ERROR: Could not find Master IP"
             echo ""
-            echo "The infrastructure must be deployed first!"
-            echo "Run the 'Deploy Infrastructure' workflow to create VMs."
+            echo "⚠️  The infrastructure must be deployed first!"
+            echo "📝 Steps:"
+            echo "   1. Run the 'Deploy Infrastructure' workflow to create VMs"
+            echo "   2. Wait 3-5 minutes for Cassandra to boot"
+            echo "   3. Then run this 'Deploy to Master VM' workflow"
             exit 1
           fi
           

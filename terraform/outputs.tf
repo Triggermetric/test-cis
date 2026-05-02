@@ -3,6 +3,14 @@
 # =============================================================================
 
 # ---------------------------------------------------------------------------
+# Master Public IP — primary output for SSH access and deployments
+# ---------------------------------------------------------------------------
+output "master_public_ip" {
+  description = "Master node public IP address (for SSH and web access)"
+  value       = try(azurerm_public_ip.node["master"].ip_address, null)
+}
+
+# ---------------------------------------------------------------------------
 # Public IPs — needed to SSH into each node from outside the VNet
 # ---------------------------------------------------------------------------
 output "public_ips" {

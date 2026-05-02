@@ -84,35 +84,6 @@ jobs:
           retention-days: 90
 
   # ─────────────────────────────────────────────────────────────
-  # SSH Cleanup (optional - graceful shutdown)
-  # ─────────────────────────────────────────────────────────────
-  graceful-shutdown:
-    name: Graceful Shutdown Services (Optional)
-    needs: safety-check
-    runs-on: ubuntu-latest
-    if: ${{ secrets.MASTER_IP != '' && secrets.MASTER_SSH_PRIVATE_KEY != '' }}
-    
-    steps:
-      - name: Configure SSH
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.MASTER_SSH_PRIVATE_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.MASTER_IP }} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: Stop services on Master VM
-        continue-on-error: true
-        run: |
-          echo "Stopping services on Master VM..."
-          ssh -o ConnectTimeout=10 cassandra@${{ secrets.MASTER_IP }} \
-            "echo 'Stopping services...'; \
-             sudo systemctl stop cis-backend nginx 2>/dev/null || true; \
-             sudo systemctl disable cis-backend nginx 2>/dev/null || true; \
-             echo '[✓] Services stopped'" || echo "[⚠] Could not reach Master VM"
-
-  # ─────────────────────────────────────────────────────────────
   # Terraform Destruction
   # ─────────────────────────────────────────────────────────────
   terraform-destroy:
@@ -191,7 +162,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   cleanup-report:
     name: Destruction Report
-    needs: [terraform-destroy, graceful-shutdown]
+    needs: [terraform-destroy]
     runs-on: ubuntu-latest
     if: always()
 
