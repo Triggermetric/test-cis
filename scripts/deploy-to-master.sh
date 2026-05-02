@@ -7,7 +7,8 @@ set -e
 MASTER_IP="${1:-localhost}"
 SSH_KEY_PATH="${2:-$HOME/.ssh/id_rsa}"
 SSH_USER="cassandra"
-REPO_URL="https://github.com/your-org/cis-cassandra-main.git"  # Update this
+#REPO_URL="https://github.com/your-org/cis-cassandra-main.git"  # Update this
+EPO_URL="https://github.com/Triggermetric/test-cis"  # Update this
 
 echo "Deploying CIS Cassandra to Master VM"
 echo "========================================"
