@@ -101,6 +101,16 @@ SERVICE
 # Backend frontend setup
 echo ""
 echo "Setting up frontend..."
+
+# --- ADD THIS BLOCK TO INSTALL NODE.JS ---
+if ! command -v npm &> /dev/null; then
+    echo "npm not found. Installing Node.js (v20)..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+    echo "[OK] Node.js and npm installed."
+fi
+# -----------------------------------------
+
 cd ../frontend
 
 # Install Node deps
