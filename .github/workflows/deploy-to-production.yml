@@ -37,21 +37,39 @@ jobs:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4
 
+      - name: Download Terraform state
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-state
+          path: terraform/
+        continue-on-error: true
+
+      - name: Download infrastructure outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: infrastructure-outputs
+        continue-on-error: true
+
       - name: Get Master IP from Terraform outputs
         id: terraform-output
         run: |
+          # First try to get from infra-outputs.json artifact
+          if [ -f "infra-outputs.json" ]; then
+            MASTER_IP=$(jq -r '.master_public_ip.value // empty' infra-outputs.json 2>/dev/null)
+            if [ -n "$MASTER_IP" ] && [ "$MASTER_IP" != "null" ]; then
+              echo "master_ip=$MASTER_IP" >> $GITHUB_OUTPUT
+              echo "[✓] Master IP from outputs: $MASTER_IP"
+              exit 0
+            fi
+          fi
+          
+          # Fall back to terraform state if available
           cd terraform
           terraform init -backend=false 2>/dev/null || true
           
-          # Try to get from terraform.tfstate if available
           MASTER_IP=""
           if [ -f "terraform.tfstate" ]; then
             MASTER_IP=$(jq -r '.outputs.master_public_ip.value // empty' terraform.tfstate 2>/dev/null)
-          fi
-          
-          # If not found in state, try terraform output command
-          if [ -z "$MASTER_IP" ] || [ "$MASTER_IP" == "null" ]; then
-            MASTER_IP=$(terraform output -raw master_public_ip 2>/dev/null || echo "")
           fi
           
           if [ -z "$MASTER_IP" ] || [ "$MASTER_IP" == "null" ]; then

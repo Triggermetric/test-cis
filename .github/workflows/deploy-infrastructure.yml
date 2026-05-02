@@ -149,6 +149,13 @@ jobs:
           path: infra-outputs.json
           retention-days: 30
 
+      - name: Upload Terraform state
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-state
+          path: terraform/terraform.tfstate
+          retention-days: 30
+
   # ─────────────────────────────────────────────────────────────
   # Verification
   # ─────────────────────────────────────────────────────────────
