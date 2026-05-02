@@ -142,7 +142,7 @@ resource "azurerm_network_security_group" "cassandra_primary" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "80"
-    source_address_prefixes    = ["*"]
+    source_address_prefix      = "0.0.0.0/0"
     destination_address_prefix = "*"
     description                = "HTTP — for frontend nginx hosting (optional)"
   }
@@ -155,7 +155,7 @@ resource "azurerm_network_security_group" "cassandra_primary" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "443"
-    source_address_prefixes    = ["*"]
+    source_address_prefix      = "0.0.0.0/0"
     destination_address_prefix = "*"
     description                = "HTTPS — for frontend nginx hosting (optional)"
   }
@@ -299,7 +299,7 @@ resource "azurerm_network_security_group" "cassandra_secondary" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "80"
-    source_address_prefixes    = ["*"]
+    source_address_prefix      = "0.0.0.0/0"
     destination_address_prefix = "*"
     description                = "HTTP — for frontend nginx hosting (optional)"
   }
@@ -312,7 +312,7 @@ resource "azurerm_network_security_group" "cassandra_secondary" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "443"
-    source_address_prefixes    = ["*"]
+    source_address_prefix      = "0.0.0.0/0"
     destination_address_prefix = "*"
     description                = "HTTPS — for frontend nginx hosting (optional)"
   }
@@ -349,3 +349,4 @@ resource "azurerm_subnet_network_security_group_association" "cassandra_secondar
   subnet_id                 = azurerm_subnet.cassandra_secondary.id
   network_security_group_id = azurerm_network_security_group.cassandra_secondary.id
 }
+
