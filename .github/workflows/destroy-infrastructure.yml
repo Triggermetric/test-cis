@@ -177,19 +177,31 @@ jobs:
         run: |
           cd terraform
           echo "🔥 DESTROYING INFRASTRUCTURE..."
-          terraform destroy -var-file=terraform.tfvars -auto-approve -input=false
-          echo "[✓] Infrastructure destruction complete"
+
+          if [ -f "terraform.tfstate" ]; then
+            echo "[✓] terraform.tfstate found, using terraform destroy"
+            terraform destroy -var-file=terraform.tfvars -auto-approve -input=false
+            echo "[✓] Infrastructure destruction complete via Terraform"
+          else
+            echo "[⚠] terraform.tfstate not found. Destroying resource group directly via Azure CLI."
+            az group delete --name cis-cassandra-rg --yes --no-wait
+            echo "[✓] Resource group deletion requested via Azure CLI"
+          fi
 
       - name: Verify destruction
         continue-on-error: true
         run: |
-          cd terraform
-          echo "Verifying that infrastructure is gone..."
-          RESOURCE_COUNT=$(terraform state list 2>/dev/null | wc -l)
-          if [ "$RESOURCE_COUNT" -eq 0 ]; then
-            echo "[✓] All resources destroyed (0 resources in state)"
+          if [ -f "terraform/terraform.tfstate" ]; then
+            cd terraform
+            echo "Verifying that infrastructure is gone..."
+            RESOURCE_COUNT=$(terraform state list 2>/dev/null | wc -l)
+            if [ "$RESOURCE_COUNT" -eq 0 ]; then
+              echo "[✓] All resources destroyed (0 resources in state)"
+            else
+              echo "[⚠] $RESOURCE_COUNT resources still in state (may be expected)"
+            fi
           else
-            echo "[⚠] $RESOURCE_COUNT resources still in state (may be expected)"
+            echo "[ℹ] No terraform state available to verify. The resource group deletion was requested."
           fi
 
   # ─────────────────────────────────────────────────────────────
