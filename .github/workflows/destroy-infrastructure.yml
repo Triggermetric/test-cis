@@ -98,6 +98,13 @@ jobs:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4
 
+      - name: Download Terraform state
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-state
+          path: terraform/
+        continue-on-error: true
+
       # ─────────────────────────────────────────────────────────
       # Azure Authentication via OIDC
       # ─────────────────────────────────────────────────────────
