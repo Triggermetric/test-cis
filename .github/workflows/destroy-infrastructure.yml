@@ -117,6 +117,30 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Prepare Terraform variables and SSH key
+        run: |
+          set -e
+          mkdir -p terraform/ssh
+
+          if [ -z "${{ secrets.MASTER_SSH_PRIVATE_KEY }}" ]; then
+            echo "ERROR: MASTER_SSH_PRIVATE_KEY secret is required"
+            exit 1
+          fi
+
+          echo "${{ secrets.MASTER_SSH_PRIVATE_KEY }}" > terraform/ssh/id_rsa
+          chmod 600 terraform/ssh/id_rsa
+          ssh-keygen -y -f terraform/ssh/id_rsa > terraform/ssh/id_rsa.pub
+
+          cat > terraform/terraform.tfvars <<EOF
+project_name        = "cis-cassandra"
+resource_group_name = "cis-cassandra-rg"
+location             = "Korea Central"
+secondary_location   = "Southeast Asia"
+vm_size              = "Standard_B2as_v2"
+ssh_public_key_path  = "ssh/id_rsa.pub"
+allowed_ssh_ips      = ["0.0.0.0/0"]
+EOF
+
       - name: Initialize Terraform
         run: |
           cd terraform
@@ -134,13 +158,13 @@ jobs:
         run: |
           cd terraform
           echo "Resources to be destroyed:"
-          terraform plan -destroy | grep -E "^\s*(will be destroyed|Plan:)" || true
+          terraform plan -destroy -var-file=terraform.tfvars -input=false | grep -E "^\s*(will be destroyed|Plan:)" || true
 
       - name: Execute Terraform Destroy
         run: |
           cd terraform
           echo "🔥 DESTROYING INFRASTRUCTURE..."
-          terraform destroy -auto-approve
+          terraform destroy -var-file=terraform.tfvars -auto-approve -input=false
           echo "[✓] Infrastructure destruction complete"
 
       - name: Verify destruction
