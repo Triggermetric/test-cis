@@ -79,6 +79,12 @@ fi
 # Install Python deps
 pip install -r requirements.txt
 
+# Ensure the backend starts with the expected environment
+if [ ! -f ".env" ]; then
+    echo "ERROR: .env was not created"
+    exit 1
+fi
+
 # Create systemd service for backend
 echo "Installing backend systemd service..."
 sudo tee /etc/systemd/system/cis-backend.service > /dev/null <<'SERVICE'
@@ -119,6 +125,9 @@ npm install
 # Build frontend
 npm run build
 
+# Fix permissions for nginx
+sudo chown -R www-data:www-data /home/cassandra/app/cis-cassandra-main/frontend/dist
+
 if ! command -v nginx &> /dev/null; then
     echo "Nginx not found. Installing Nginx..."
     sudo apt-get update
@@ -148,7 +157,7 @@ server {
 
     # API proxy to backend
     location /api/ {
-        proxy_pass http://backend;
+        proxy_pass http://backend/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -183,6 +192,26 @@ sudo systemctl restart cis-backend
 
 echo "[OK] Backend service running"
 echo "[OK] Nginx running"
+
+echo ""
+echo "Verifying backend and frontend endpoints..."
+for i in {1..12}; do
+    if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+        echo "[OK] Backend health endpoint is responding"
+        break
+    fi
+    if [ "$i" -eq 12 ]; then
+        echo "[WARN] Backend health endpoint did not respond yet"
+    else
+        sleep 5
+    fi
+done
+
+if curl -fsS http://127.0.0.1/ >/dev/null 2>&1; then
+    echo "[OK] Frontend is responding on port 80"
+else
+    echo "[WARN] Frontend did not respond on port 80 yet"
+fi
 echo ""
 echo "[SUCCESS] Deployment complete!"
 echo ""
