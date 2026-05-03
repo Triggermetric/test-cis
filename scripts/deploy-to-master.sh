@@ -125,8 +125,11 @@ npm install
 # Build frontend
 npm run build
 
-# Fix permissions for nginx
-sudo chown -R www-data:www-data /home/cassandra/app/cis-cassandra-main/frontend/dist
+# Stage frontend assets in an nginx-friendly location
+sudo mkdir -p /var/www/cis-cassandra
+sudo rsync -a --delete dist/ /var/www/cis-cassandra/
+sudo chown -R www-data:www-data /var/www/cis-cassandra
+sudo chmod -R 755 /var/www/cis-cassandra
 
 if ! command -v nginx &> /dev/null; then
     echo "Nginx not found. Installing Nginx..."
@@ -147,7 +150,7 @@ server {
     listen [::]:80 default_server;
     server_name _;
 
-    root /home/cassandra/app/cis-cassandra-main/frontend/dist;
+    root /var/www/cis-cassandra;
     index index.html;
 
     # Frontend static files
@@ -157,7 +160,7 @@ server {
 
     # API proxy to backend
     location /api/ {
-        proxy_pass http://backend/;
+        proxy_pass http://backend;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
